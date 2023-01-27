@@ -41,13 +41,15 @@ class TcpClient
 
     protected function createTcpConnection()
     {
+        // todo if E_WARNINGs are being reported, this may throw an error on failure,
+        // which would be a different class from our custom exception. we should wrap it
         $filePointer = fsockopen($this->hostname, $this->port, $errorCode, $errorMessage, timeout: 3);
         if ($filePointer === false) {
             throw new \Exception("Failed to connect to Faktory on {$this->hostname}:{$this->port}: $errorMessage (error code $errorCode)");
         }
 
         $this->connection = $filePointer;
-        stream_set_timeout($this->connection, seconds: 5);
+        stream_set_timeout($this->connection, seconds: 2); // Faktory may block for up to 2s on FETCH
     }
 
     protected function handshake()
@@ -72,6 +74,20 @@ class TcpClient
         $this->send("HELLO", $workerInfo);
     }
 
+    public function push(array $job)
+    {
+        $this->send("PUSH", json_encode($job, JSON_THROW_ON_ERROR));
+        return self::checkOk($this->readLine(), operation: "Job push");
+    }
+
+    public function fetch(string ...$queues)
+    {
+        $this->send("FETCH", ...$queues);
+        // The first line of the response just contains the length of the next line; skip it
+        $this->readLine();
+        return json_decode($this->readLine(), true, JSON_THROW_ON_ERROR);
+    }
+
     protected function send($command, ...$args): void
     {
         fwrite(
@@ -81,10 +97,10 @@ class TcpClient
 
     protected function readLine(): mixed
     {
-        $received = $this->responseParser->pushIncoming(fgets($this->connection));
-        if (empty($received)) return null;
+        $messages = $this->responseParser->pushIncoming(fgets($this->connection));
+        if (empty($messages)) return null;
 
-        return $received[0]?->getValueNative();
+        return $messages[0]?->getValueNative();
     }
 
     private static function checkOk(mixed $result, $operation = "Operation")
