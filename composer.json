@@ -4,10 +4,16 @@
         "clue/redis-protocol": "^0.3.1"
     },
     "require-dev": {
-        "pestphp/pest": "^1.22"
+        "pestphp/pest": "^1.22",
+        "spatie/ray": "^1.36"
     },
     "scripts": {
         "test": "pest"
+    },
+    "autoload": {
+        "psr-4": {
+            "Knuckles\\Faktory\\": "src"
+        }
     },
     "config": {
         "allow-plugins": {
