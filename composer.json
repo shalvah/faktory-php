@@ -1,7 +1,9 @@
 {
     "require": {
         "php": ">= 8.1",
-        "clue/redis-protocol": "^0.3.1"
+        "clue/redis-protocol": "^0.3.1",
+        "psr/log": "^3.0",
+        "monolog/monolog": "^3.3"
     },
     "require-dev": {
         "pestphp/pest": "^1.22",

@@ -4,8 +4,13 @@ namespace Knuckles\Faktory;
 
 use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
+use Monolog\Level;
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerInterface;
 
-class TcpClient
+class TcpClient implements LoggerAwareInterface
 {
     protected ParserInterface $responseParser;
 
@@ -16,8 +21,15 @@ class TcpClient
     protected bool $connected = false;
     protected array $workerInfo;
 
-    public function __construct()
+    protected LoggerInterface $logger;
+
+    public function __construct(
+        $logLevel = Level::Info,
+        $logDestination = 'php://stderr',
+        ?LoggerInterface $logger = null)
     {
+        $this->logger = $logger ?: self::makeLogger($logLevel, $logDestination);
+
         $factory = new ProtocolFactory();
         $this->responseParser = $factory->createResponseParser();
         $this->connection = null;
@@ -29,10 +41,21 @@ class TcpClient
             "labels" => [],
             "v" => 2
         ];
+        $this->logLevel = $logLevel;
+        $this->logDestination = $logDestination;
+    }
+
+    protected static function makeLogger(Level $logLevel, string $logDestination): LoggerInterface
+    {
+        return new Logger(
+            name: 'faktory-php',
+            handlers: [(new StreamHandler($logDestination, $logLevel))]
+        );
     }
 
     public function connect(): bool
     {
+        $this->logger->info("Connecting to Faktory server on $this->hostname");
         $this->createTcpConnection();
         self::checkOk($this->handshake(), operation: "Handshake");
 
@@ -90,9 +113,9 @@ class TcpClient
 
     protected function send($command, ...$args): void
     {
-        fwrite(
-            $this->connection, $command . " " . join(' ', $args) . "\r\n"
-        );
+        $message = $command . " " . join(' ', $args) . "\r\n";
+        $this->logger->debug("Sending: " . $message);
+        fwrite($this->connection, $message);
     }
 
     protected function readLine(): mixed
@@ -100,7 +123,9 @@ class TcpClient
         $messages = $this->responseParser->pushIncoming(fgets($this->connection));
         if (empty($messages)) return null;
 
-        return $messages[0]?->getValueNative();
+        $line = $messages[0]?->getValueNative();
+        $this->logger->debug("Received: " . $line);
+        return $line;
     }
 
     private static function checkOk(mixed $result, $operation = "Operation")
@@ -111,5 +136,10 @@ class TcpClient
         }
 
         return true;
+    }
+
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
     }
 }
