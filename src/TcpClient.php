@@ -4,9 +4,11 @@ namespace Knuckles\Faktory;
 
 use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
+use Knuckles\Faktory\Problems\CouldntConnect;
+use Knuckles\Faktory\Problems\UnexpectedResponse;
+use Monolog\Handler\StreamHandler;
 use Monolog\Level;
 use Monolog\Logger;
-use Monolog\Handler\StreamHandler;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 
@@ -57,18 +59,27 @@ class TcpClient implements LoggerAwareInterface
     {
         $this->logger->info("Connecting to Faktory server on $this->hostname");
         $this->createTcpConnection();
-        self::checkOk($this->handshake(), operation: "Handshake");
+        $this->handshake();
 
         return $this->connected = true;
     }
 
     protected function createTcpConnection()
     {
-        // todo if E_WARNINGs are being reported, this may throw an error on failure,
-        // which would be a different class from our custom exception. we should wrap it
-        $filePointer = fsockopen($this->hostname, $this->port, $errorCode, $errorMessage, timeout: 3);
+        // By default, fsockopen() will emit a warning, return false, and pass error message and code by ref.
+        // But if a user has a global error handler registered, it may raise an error instead,
+        // so we have to handle both.
+
+        $filePointer = false;
+        try {
+            $filePointer = fsockopen($this->hostname, $this->port, $errorCode, $errorMessage, timeout: 3);
+        } catch (\Throwable $e) {
+            $errorMessage = $e->getMessage();
+            $errorCode = $e->getCode();
+        }
+
         if ($filePointer === false) {
-            throw new \Exception("Failed to connect to Faktory on {$this->hostname}:{$this->port}: $errorMessage (error code $errorCode)");
+            throw CouldntConnect::to("{$this->hostname}:{$this->port}", $errorMessage, $errorCode);
         }
 
         $this->connection = $filePointer;
@@ -79,16 +90,18 @@ class TcpClient implements LoggerAwareInterface
     {
         $this->readHi();
         $this->sendHello();
-        return $this->readLine();
+        self::checkOk($this->readLine(), operation: "Handshake");
     }
 
     protected function readHi()
     {
         $hi = $this->readLine();
-        if (empty($hi)) throw new \Exception("Handshake failed");
+        if (empty($hi)) throw UnexpectedResponse::from("Handshake (HI)", $hi);
 
         $version = json_decode(str_replace("HI ", "", $hi))->v;
-        if (intval($version) > 2) echo "Expected Faktory protocol v2 or lower; found $version";
+        if (intval($version) > 2) {
+            $this->logger->warning("Expected Faktory protocol v2 or lower; received $version from the server");;
+        }
     }
 
     protected function sendHello()
@@ -100,7 +113,7 @@ class TcpClient implements LoggerAwareInterface
     public function push(array $job)
     {
         $this->send("PUSH", json_encode($job, JSON_THROW_ON_ERROR));
-        return self::checkOk($this->readLine(), operation: "Job push");
+        return self::checkOk($this->readLine(), operation: "PUSH");
     }
 
     public function fetch(string ...$queues)
@@ -120,19 +133,18 @@ class TcpClient implements LoggerAwareInterface
 
     protected function readLine(): mixed
     {
-        $messages = $this->responseParser->pushIncoming(fgets($this->connection));
+        $line = fgets($this->connection);
+        $this->logger->debug("Received: " . $line);
+        $messages = $this->responseParser->pushIncoming($line);
         if (empty($messages)) return null;
 
-        $line = $messages[0]?->getValueNative();
-        $this->logger->debug("Received: " . $line);
-        return $line;
+        return $messages[0]?->getValueNative();
     }
 
     private static function checkOk(mixed $result, $operation = "Operation")
     {
         if ($result !== "OK") {
-            // todo custom exceptions
-            throw new \Exception("$operation failed with response: $result");
+            throw UnexpectedResponse::from($operation, $result);
         }
 
         return true;

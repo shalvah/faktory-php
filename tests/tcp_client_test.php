@@ -1,5 +1,6 @@
 <?php
 
+use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\TcpClient;
 
 it('can connect to the Faktory server', function () {
@@ -8,8 +9,7 @@ it('can connect to the Faktory server', function () {
 });
 
 it('can push to and fetch from the Faktory server', function () {
-    $client = new TcpClient;
-    $client->connect();
+    $client = client();
 
     $job = [
         "jid" => "123861239abnadsa",
@@ -27,3 +27,14 @@ it('can push to and fetch from the Faktory server', function () {
 
     expect($fetched)->toEqual(array_merge($job, ['queue' => 'default', 'retry' => 25]));
 });
+
+it('raises an error when the response is not OK', function () {
+    $invalidJob = ["jobtype" => null];
+    expect(fn() => client()->push($invalidJob))->toThrow(UnexpectedResponse::class);
+});
+
+function client() {
+    $client = new TcpClient(logLevel: \Monolog\Level::Error);
+    $client->connect();
+    return $client;
+}
