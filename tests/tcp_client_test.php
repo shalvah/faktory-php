@@ -1,24 +1,41 @@
 <?php
 
+use Knuckles\Faktory\Problems\CouldntConnect;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\TcpClient;
+use Knuckles\Faktory\Utils\Json;
+use Monolog\Level;
 
-it('can connect to the Faktory server', function () {
-    $client = new TcpClient;
-    expect($client->connect())->toBeTrue();
+const PORT = 7400;
+
+it('raises an error if Faktory server is unreachable', function () {
+    $previous = set_error_handler(fn () => null, E_WARNING); // Disable PHPUnit's default
+    expect(fn() => client()->connect())->toThrow(CouldntConnect::class);
+    set_error_handler($previous);
 });
 
-it('can push to and fetch from the Faktory server', function () {
-    $client = client();
+it('connects to the Faktory server', function () {
+    exec("docker run -p ".PORT.":7419 -d --name faktory-test contribsys/faktory:latest", $output);
+    sleep(1);
+    expect(client()->connect())->toBeTrue();
+})->depends('it raises an error if Faktory server is unreachable');
+
+it('can send commands to and read from the Faktory server', function () {
+    $client = client(\Monolog\Level::Debug);
+
+    $client->send("FLUSH");
+    expect($client->readLine())->toStartWith("OK");
 
     $job = [
         "jid" => "123861239abnadsa",
         "jobtype" => "SomeJobClass",
         "args" => [1, 2, true, "hello"],
     ];
-    expect($client->push($job))->toBeTrue();
+    $client->send("PUSH", Json::stringify($job));
+    expect($client->readLine())->toStartWith("OK");
 
-    $fetched = $client->fetch(queues: "default");
+    $client->send("FETCH", "default");
+    $fetched = Json::parse($client->readLine(skipLines: 1));
     expect($fetched['created_at'])->not->toBeEmpty();
     unset($fetched['created_at']);
 
@@ -26,15 +43,38 @@ it('can push to and fetch from the Faktory server', function () {
     unset($fetched['enqueued_at']);
 
     expect($fetched)->toEqual(array_merge($job, ['queue' => 'default', 'retry' => 25]));
-});
+})->depends('it connects to the Faktory server');
 
-it('raises an error when the response is not OK', function () {
-    $invalidJob = ["jobtype" => null];
-    expect(fn() => client()->push($invalidJob))->toThrow(UnexpectedResponse::class);
-});
+it('->send and ->readLine() do not raise an error when the response is not OK', function () {
+    $client = client();
+    $client->send("PUSH", "Something");
+    expect($client->readLine())->toStartWith("ERR");
+})->depends('it connects to the Faktory server');
 
-function client() {
-    $client = new TcpClient(logLevel: \Monolog\Level::Error);
-    $client->connect();
-    return $client;
+it('->operation() raises an error when the response is not OK', function () {
+    expect(
+        fn() => client()->operation("PUSH", "Anything")
+    )->toThrow(UnexpectedResponse::class);
+})->depends('it connects to the Faktory server');
+
+it('automatically connects if not connected before sending a command', function () {
+    $client = client();
+    $client->disconnect();
+    expect($client->isConnected())->toBeFalse();
+    client()->send("PUSH", JSON::stringify([
+        "jid" => "abc", "jobtype" => "SomeJobClass",
+    ]));
+    expect($client->isConnected())->toBeTrue();
+})->skip();
+
+function client($level = \Monolog\Level::Error) {
+    return new TcpClient(
+        workerInfo: ["v" => 2],
+        logger: Knuckles\Faktory\Faktory::makeLogger(logLevel: $level),
+        port: PORT,
+    );
 }
+
+afterAll(function () {
+    exec("docker rm -f faktory-test", $output);
+});

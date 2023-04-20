@@ -6,11 +6,12 @@
         "monolog/monolog": "^3.3"
     },
     "require-dev": {
-        "pestphp/pest": "^1.22",
+        "pestphp/pest": "^2.0",
         "spatie/ray": "^1.36"
     },
     "scripts": {
-        "test": "pest"
+        "test": "pest --colors=always",
+        "test-ci": "pest"
     },
     "autoload": {
         "psr-4": {

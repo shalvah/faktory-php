@@ -6,62 +6,38 @@ use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
 use Knuckles\Faktory\Problems\CouldntConnect;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
-use Monolog\Handler\StreamHandler;
-use Monolog\Level;
-use Monolog\Logger;
+use Knuckles\Faktory\Utils\Json;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 
 class TcpClient implements LoggerAwareInterface
 {
-    protected ParserInterface $responseParser;
 
     /** @var resource|null */
     protected $connection;
-    protected string $hostname = 'tcp://dreamatorium.local';
-    protected int $port = 7419;
-    protected bool $connected = false;
-    protected array $workerInfo;
-
-    protected LoggerInterface $logger;
+    protected State $state = State::Disconnected;
+    protected ParserInterface $responseParser;
 
     public function __construct(
-        $logLevel = Level::Info,
-        $logDestination = 'php://stderr',
-        ?LoggerInterface $logger = null)
-    {
-        $this->logger = $logger ?: self::makeLogger($logLevel, $logDestination);
-
-        $factory = new ProtocolFactory();
-        $this->responseParser = $factory->createResponseParser();
+        protected array $workerInfo,
+        protected LoggerInterface $logger,
+        protected string $hostname = 'tcp://localhost',
+        protected int $port = 7419,
+    ) {
+        $this->responseParser = (new ProtocolFactory())->createResponseParser();
         $this->connection = null;
-
-        $this->workerInfo = [
-            "hostname" => gethostname(),
-            "wid" => "test-worker-1",
-            "pid" => getmypid(),
-            "labels" => [],
-            "v" => 2
-        ];
-        $this->logLevel = $logLevel;
-        $this->logDestination = $logDestination;
-    }
-
-    protected static function makeLogger(Level $logLevel, string $logDestination): LoggerInterface
-    {
-        return new Logger(
-            name: 'faktory-php',
-            handlers: [(new StreamHandler($logDestination, $logLevel))]
-        );
     }
 
     public function connect(): bool
     {
-        $this->logger->info("Connecting to Faktory server on $this->hostname");
+        $this->state = State::Connecting;
+
+        $this->logger->info("Connecting to Faktory server on $this->hostname:$this->port");
         $this->createTcpConnection();
         $this->handshake();
 
-        return $this->connected = true;
+        $this->state = State::Connected;
+        return true;
     }
 
     protected function createTcpConnection()
@@ -110,31 +86,40 @@ class TcpClient implements LoggerAwareInterface
         $this->send("HELLO", $workerInfo);
     }
 
-    public function push(array $job)
+    /**
+     * Send a command and raise an error if the response is not OK.
+     */
+    public function operation($command, string ...$args): void
     {
-        $this->send("PUSH", json_encode($job, JSON_THROW_ON_ERROR));
-        return self::checkOk($this->readLine(), operation: "PUSH");
+        $this->send($command, ...$args);
+        self::checkOk($this->readLine(), operation: $command);
     }
 
-    public function fetch(string ...$queues)
+    public function send($command, string ...$args): void
     {
-        $this->send("FETCH", ...$queues);
-        // The first line of the response just contains the length of the next line; skip it
-        $this->readLine();
-        return json_decode($this->readLine(), true, JSON_THROW_ON_ERROR);
-    }
+        if ($this->state == State::Disconnected) {
+            $this->connect();
+        }
 
-    protected function send($command, ...$args): void
-    {
         $message = $command . " " . join(' ', $args) . "\r\n";
         $this->logger->debug("Sending: " . $message);
         fwrite($this->connection, $message);
     }
 
-    protected function readLine(): mixed
+    public function readLine(?int $skipLines = 0): mixed
     {
-        $line = fgets($this->connection);
-        $this->logger->debug("Received: " . $line);
+        if ($this->state == State::Disconnected) {
+            $this->connect();
+        }
+
+        do {
+            $line = fgets($this->connection);
+            $this->logger->debug("Received: " . $line);
+        } while ($skipLines--);
+
+        if (str_starts_with($line, "{")) // JSON respons
+            return $line;
+
         $messages = $this->responseParser->pushIncoming($line);
         if (empty($messages)) return null;
 
@@ -154,4 +139,16 @@ class TcpClient implements LoggerAwareInterface
     {
         $this->logger = $logger;
     }
+
+    public function isConnected(): bool
+    {
+        return $this->state == State::Connected;
+    }
+}
+
+enum State
+{
+    case Connecting;
+    case Connected;
+    case Disconnected;
 }
