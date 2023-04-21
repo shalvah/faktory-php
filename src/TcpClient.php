@@ -40,6 +40,14 @@ class TcpClient implements LoggerAwareInterface
         return true;
     }
 
+    public function disconnect()
+    {
+        $this->send('END');
+        fclose($this->connection);
+        $this->connection = null;
+        $this->state = State::Disconnected;
+    }
+
     protected function createTcpConnection()
     {
         // By default, fsockopen() will emit a warning, return false, and pass error message and code by ref.

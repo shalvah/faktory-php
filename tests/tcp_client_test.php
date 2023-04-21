@@ -14,14 +14,20 @@ it('raises an error if Faktory server is unreachable', function () {
     set_error_handler($previous);
 });
 
-it('connects to the Faktory server', function () {
+it('connects to and disconnects from the Faktory server', function () {
     exec("docker run -p ".PORT.":7419 -d --name faktory-test contribsys/faktory:latest", $output);
     sleep(1);
-    expect(client()->connect())->toBeTrue();
+
+    $tcpClient = client();
+    expect($tcpClient->connect())->toBeTrue()
+        ->and($tcpClient->isConnected())->toBeTrue();
+
+    $tcpClient->disconnect();
+    expect($tcpClient->isConnected())->toBeFalse();
 })->depends('it raises an error if Faktory server is unreachable');
 
 it('can send commands to and read from the Faktory server', function () {
-    $client = client(\Monolog\Level::Debug);
+    $client = client();
 
     $client->send("FLUSH");
     expect($client->readLine())->toStartWith("OK");
@@ -43,31 +49,30 @@ it('can send commands to and read from the Faktory server', function () {
     unset($fetched['enqueued_at']);
 
     expect($fetched)->toEqual(array_merge($job, ['queue' => 'default', 'retry' => 25]));
-})->depends('it connects to the Faktory server');
+})->depends('it connects to and disconnects from the Faktory server');
 
 it('->send and ->readLine() do not raise an error when the response is not OK', function () {
     $client = client();
     $client->send("PUSH", "Something");
     expect($client->readLine())->toStartWith("ERR");
-})->depends('it connects to the Faktory server');
+})->depends('it connects to and disconnects from the Faktory server');
 
 it('->operation() raises an error when the response is not OK', function () {
     expect(
         fn() => client()->operation("PUSH", "Anything")
     )->toThrow(UnexpectedResponse::class);
-})->depends('it connects to the Faktory server');
+})->depends('it connects to and disconnects from the Faktory server');
 
 it('automatically connects if not connected before sending a command', function () {
     $client = client();
-    $client->disconnect();
     expect($client->isConnected())->toBeFalse();
-    client()->send("PUSH", JSON::stringify([
+    $client->send("PUSH", JSON::stringify([
         "jid" => "abc", "jobtype" => "SomeJobClass",
     ]));
     expect($client->isConnected())->toBeTrue();
-})->skip();
+});
 
-function client($level = \Monolog\Level::Error) {
+function client($level = Level::Error) {
     return new TcpClient(
         workerInfo: ["v" => 2],
         logger: Knuckles\Faktory\Faktory::makeLogger(logLevel: $level),
