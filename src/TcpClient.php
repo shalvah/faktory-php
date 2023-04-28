@@ -14,7 +14,7 @@ class TcpClient implements LoggerAwareInterface
 {
 
     /** @var resource|null */
-    protected $connection;
+    protected $connection = null;
     protected State $state = State::Disconnected;
     protected ParserInterface $responseParser;
 
@@ -25,7 +25,6 @@ class TcpClient implements LoggerAwareInterface
         protected int $port = 7419,
     ) {
         $this->responseParser = (new ProtocolFactory())->createResponseParser();
-        $this->connection = null;
     }
 
     public function connect(): bool
@@ -82,7 +81,7 @@ class TcpClient implements LoggerAwareInterface
         $hi = $this->readLine();
         if (empty($hi)) throw UnexpectedResponse::from("Handshake (HI)", $hi);
 
-        $version = json_decode(str_replace("HI ", "", $hi))->v;
+        $version = Json::parse(str_replace("HI ", "", $hi))['v'];
         if (intval($version) > 2) {
             $this->logger->warning("Expected Faktory protocol v2 or lower; received $version from the server");;
         }
@@ -90,7 +89,7 @@ class TcpClient implements LoggerAwareInterface
 
     protected function sendHello()
     {
-        $workerInfo = json_encode($this->workerInfo, JSON_THROW_ON_ERROR);
+        $workerInfo = Json::stringify($this->workerInfo);
         $this->send("HELLO", $workerInfo);
     }
 
@@ -125,8 +124,8 @@ class TcpClient implements LoggerAwareInterface
             $this->logger->debug("Received: " . $line);
         } while ($skipLines--);
 
-        if (str_starts_with($line, "{")) // JSON respons
-            return $line;
+        if (str_starts_with($line, "{"))
+            return Json::parse($line);
 
         $messages = $this->responseParser->pushIncoming($line);
         if (empty($messages)) return null;

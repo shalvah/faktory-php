@@ -13,6 +13,11 @@ jobs:
         php:
           - '8.2'
           - '8.1'
+    services:
+      faktory:
+        image: contribsys/faktory:latest
+        ports:
+          - 7419:7419
 
     name: Tests (PHP ${{ matrix.php }})
 

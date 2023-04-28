@@ -8,16 +8,17 @@ use Monolog\Level;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 
-class Faktory
+class Client
 {
     protected array $workerInfo;
     protected LoggerInterface $logger;
-    protected TcpClient $client;
+    protected TcpClient $tcpClient;
 
     public function __construct(
         Level $logLevel = Level::Info,
         string $logDestination = 'php://stderr',
-        ?LoggerInterface $logger = null)
+        ?LoggerInterface $logger = null,
+    )
     {
         $this->logger = $logger ?: self::makeLogger($logLevel, $logDestination);
         $this->workerInfo = [
@@ -27,7 +28,31 @@ class Faktory
             "labels" => [],
             "v" => 2,
         ];
-        $this->client = new TcpClient($this->workerInfo, $this->logger, hostname: 'tcp://dreamatorium.local');
+        $this->tcpClient = self::makeTcpClient(
+            $this->workerInfo, $this->logger, hostname: 'tcp://dreamatorium.local'
+        );
+    }
+
+    public function flush()
+    {
+        $this->tcpClient->operation("FLUSH");
+    }
+
+    public function push(array $job)
+    {
+        $this->tcpClient->operation("PUSH", Json::stringify($job));
+    }
+
+    public function fetch(string ...$queues)
+    {
+        $this->tcpClient->operation("FETCH", ...$queues);
+        // The first line of the response just contains the length of the next line; skip it
+        return $this->tcpClient->readLine(skipLines: 1);
+    }
+
+    public static function makeTcpClient($workerInfo, $logger, $hostname): TcpClient
+    {
+        return new TcpClient($workerInfo, $logger, $hostname);
     }
 
     public static function makeLogger(
@@ -35,26 +60,7 @@ class Faktory
     {
         return new Logger(
             name: 'faktory-php',
-            handlers: [(new StreamHandler($logDestination, $logLevel))]
+            handlers: [new StreamHandler($logDestination, $logLevel)]
         );
     }
-
-    public function flush()
-    {
-        $this->client->operation("FLUSH");
-    }
-
-    public function push(array $job)
-    {
-        $this->client->operation("PUSH", Json::stringify($job));
-    }
-
-    public function fetch(string ...$queues)
-    {
-        $this->client->operation("FETCH", ...$queues);
-        // The first line of the response just contains the length of the next line; skip it
-        $response = $this->client->readLine(skipLines: 1);
-        return Json::parse($response);
-    }
-
 }
