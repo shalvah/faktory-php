@@ -70,15 +70,15 @@ it('does not log a warning when version is lower than expected', function () {
     $tcpClient->connect();
 });
 
-test('->send and ->readLine() do not raise an error when the response is not OK', function () {
+test('->readLine() raises an error when the response is an ERR', function () {
     $tcpClient = tcpClient();
-    $tcpClient->send("PUSH", "Something");
-    expect($tcpClient->readLine())->toStartWith("ERR");
+    $tcpClient->send("PUSH", "Invalid payload");
+    expect(fn() => $tcpClient->readLine())->toThrow(UnexpectedResponse::class);
 });
 
-test('->operation() raises an error when the response is not OK', function () {
+test('->sendAndRead() raises an error when the response is not OK', function () {
     expect(
-        fn() => tcpClient()->operation("PUSH", "Anything")
+        fn() => tcpClient()->sendAndRead("PUSH", "Invalid data")
     )->toThrow(UnexpectedResponse::class);
 });
 

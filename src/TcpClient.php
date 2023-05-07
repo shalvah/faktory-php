@@ -5,6 +5,7 @@ namespace Knuckles\Faktory;
 use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
 use Knuckles\Faktory\Problems\CouldntConnect;
+use Knuckles\Faktory\Problems\ProtocolError;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\Utils\Json;
 use Psr\Log\LoggerAwareInterface;
@@ -75,7 +76,7 @@ class TcpClient implements LoggerAwareInterface
     {
         $this->readHi();
         $this->sendHello();
-        self::checkOk($this->readLine(), operation: "Handshake");
+        $this->readLine(operation: "Handshake");
     }
 
     protected function readHi()
@@ -102,13 +103,10 @@ class TcpClient implements LoggerAwareInterface
         $this->send("HELLO", $workerInfo);
     }
 
-    /**
-     * Send a command and raise an error if the response is not OK.
-     */
-    public function operation($command, string ...$args): void
+    public function sendAndRead($command, string ...$args): mixed
     {
         $this->send($command, ...$args);
-        self::checkOk($this->readLine(), operation: $command);
+        return $this->readLine(operation: $command);
     }
 
     public function send($command, string ...$args): void
@@ -122,7 +120,7 @@ class TcpClient implements LoggerAwareInterface
         fwrite($this->connection, $message);
     }
 
-    public function readLine(?int $skipLines = 0): mixed
+    public function readLine(?int $skipLines = 0, $operation = "Operation"): mixed
     {
         if ($this->state == State::Disconnected) {
             $this->connect();
@@ -139,16 +137,11 @@ class TcpClient implements LoggerAwareInterface
         $messages = $this->responseParser->pushIncoming($line);
         if (empty($messages)) return null;
 
-        return $messages[0]?->getValueNative();
-    }
+        $response = $messages[0]?->getValueNative();
+        if (is_string($response) && str_starts_with($response, "ERR"))
+            throw UnexpectedResponse::from($operation, $response);
 
-    private static function checkOk(mixed $result, $operation = "Operation")
-    {
-        if ($result !== "OK") {
-            throw UnexpectedResponse::from($operation, $result);
-        }
-
-        return true;
+        return $response;
     }
 
     public function setLogger(LoggerInterface $logger): void
