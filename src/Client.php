@@ -26,7 +26,6 @@ class Client
             "wid" => "test-worker-1",
             "pid" => getmypid(),
             "labels" => [],
-            "v" => 2,
         ];
         $this->tcpClient = self::makeTcpClient(
             $this->workerInfo, $this->logger, hostname: 'tcp://dreamatorium.local'

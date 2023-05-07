@@ -13,14 +13,16 @@ use Psr\Log\LoggerInterface;
 class TcpClient implements LoggerAwareInterface
 {
 
+    const SUPPORTED_FAKTORY_PROTOCOL_VERSION = 2;
+
     /** @var resource|null */
     protected $connection = null;
     protected State $state = State::Disconnected;
     protected ParserInterface $responseParser;
 
     public function __construct(
-        protected array $workerInfo,
         protected LoggerInterface $logger,
+        protected array $workerInfo = [],
         protected string $hostname = 'tcp://localhost',
         protected int $port = 7419,
     ) {
@@ -82,14 +84,21 @@ class TcpClient implements LoggerAwareInterface
         if (empty($hi)) throw UnexpectedResponse::from("Handshake (HI)", $hi);
 
         $version = Json::parse(str_replace("HI ", "", $hi))['v'];
-        if (intval($version) > 2) {
-            $this->logger->warning("Expected Faktory protocol v2 or lower; received $version from the server");;
+        if (floatval($version) > static::SUPPORTED_FAKTORY_PROTOCOL_VERSION) {
+            $this->logger->warning(
+                sprintf(
+                    "Expected Faktory protocol v%s or lower; received v%s from the server",
+                    static::SUPPORTED_FAKTORY_PROTOCOL_VERSION, $version
+                )
+            );;
         }
     }
 
     protected function sendHello()
     {
-        $workerInfo = Json::stringify($this->workerInfo);
+        $workerInfo = Json::stringify(array_merge(
+            $this->workerInfo, ["v" => static::SUPPORTED_FAKTORY_PROTOCOL_VERSION]
+        ));
         $this->send("HELLO", $workerInfo);
     }
 

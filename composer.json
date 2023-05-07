@@ -7,7 +7,8 @@
     },
     "require-dev": {
         "pestphp/pest": "^2.0",
-        "spatie/ray": "^1.36"
+        "spatie/ray": "^1.36",
+        "mockery/mockery": "^1.5"
     },
     "scripts": {
         "test": "pest --colors=always",
