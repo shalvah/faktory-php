@@ -5,7 +5,6 @@ namespace Knuckles\Faktory;
 use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
 use Knuckles\Faktory\Problems\CouldntConnect;
-use Knuckles\Faktory\Problems\ProtocolError;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\Utils\Json;
 use Psr\Log\LoggerAwareInterface;

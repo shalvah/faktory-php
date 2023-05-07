@@ -28,23 +28,29 @@ class Client
             "labels" => [],
         ];
         $this->tcpClient = self::makeTcpClient(
-            $this->workerInfo, $this->logger, hostname: 'tcp://dreamatorium.local'
+            $this->logger, $this->workerInfo, hostname: 'tcp://dreamatorium.local'
         );
+    }
+
+    public function info(): array
+    {
+        $this->tcpClient->send("INFO");
+        return $this->tcpClient->readLine(skipLines: 1);
     }
 
     public function flush()
     {
-        $this->tcpClient->operation("FLUSH");
+        $this->tcpClient->sendAndRead("FLUSH");
     }
 
     public function push(array $job)
     {
-        $this->tcpClient->operation("PUSH", Json::stringify($job));
+        $this->tcpClient->sendAndRead("PUSH", Json::stringify($job));
     }
 
-    public function fetch(string ...$queues)
+    public function fetch(string ...$queues): array|null
     {
-        $this->tcpClient->operation("FETCH", ...$queues);
+        $this->tcpClient->send("FETCH", ...$queues);
         // The first line of the response just contains the length of the next line; skip it
         return $this->tcpClient->readLine(skipLines: 1);
     }
