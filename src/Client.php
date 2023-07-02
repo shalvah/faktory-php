@@ -48,6 +48,12 @@ class Client
         $this->tcpClient->sendAndRead("PUSH", Json::stringify($job));
     }
 
+    public function pushBulk(array ...$jobs)
+    {
+        $this->tcpClient->sendAndRead("PUSHB", Json::stringify($jobs));
+        return $this->tcpClient->readLine();
+    }
+
     public function fetch(string ...$queues): array|null
     {
         $this->tcpClient->send("FETCH", ...$queues);
