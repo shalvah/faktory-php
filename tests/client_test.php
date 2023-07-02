@@ -22,3 +22,6 @@ it('can push and retrieve jobs', function () {
     ]);
     expect();
 })->skip();
+
+it('can push jobs in bulk', function () {
+})->skip();

@@ -13,22 +13,31 @@ class Client
     protected array $workerInfo;
     protected LoggerInterface $logger;
     protected TcpClient $tcpClient;
+    protected string $workerId;
 
     public function __construct(
         Level $logLevel = Level::Info,
         string $logDestination = 'php://stderr',
         ?LoggerInterface $logger = null,
+        string $hostname = 'tcp://localhost',
+        int|string $port = 7419,
+        string $password = '',
     )
     {
         $this->logger = $logger ?: self::makeLogger($logLevel, $logDestination);
+        $this->workerId = bin2hex(random_bytes(12));
         $this->workerInfo = [
             "hostname" => gethostname(),
-            "wid" => "test-worker-1",
+            "wid" => $this->workerId,
             "pid" => getmypid(),
             "labels" => [],
         ];
         $this->tcpClient = self::makeTcpClient(
-            $this->logger, $this->workerInfo, hostname: 'tcp://dreamatorium.local'
+            logger: $this->logger,
+            workerInfo: $this->workerInfo,
+            hostname: $hostname,
+            port: $port,
+            password: $password,
         );
     }
 
@@ -61,13 +70,14 @@ class Client
         return $this->tcpClient->readLine(skipLines: 1);
     }
 
-    public static function makeTcpClient($workerInfo, $logger, $hostname): TcpClient
+    public static function makeTcpClient(...$args): TcpClient
     {
-        return new TcpClient($workerInfo, $logger, $hostname);
+        return new TcpClient(...$args);
     }
 
     public static function makeLogger(
-        Level $logLevel = Level::Info, string $logDestination = 'php://stderr'): LoggerInterface
+        Level $logLevel = Level::Info, string $logDestination = 'php://stderr')
+    : LoggerInterface
     {
         return new Logger(
             name: 'faktory-php',

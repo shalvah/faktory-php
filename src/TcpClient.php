@@ -26,7 +26,7 @@ class TcpClient implements LoggerAwareInterface
         protected LoggerInterface $logger,
         protected array $workerInfo = [],
         protected string $hostname = 'tcp://localhost',
-        protected int $port = 7419,
+        protected int|string $port = 7419,
         protected string $password = '',
     ) {
         $this->responseParser = (new ProtocolFactory())->createResponseParser();
