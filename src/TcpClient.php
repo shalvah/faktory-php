@@ -5,6 +5,8 @@ namespace Knuckles\Faktory;
 use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
 use Knuckles\Faktory\Problems\CouldntConnect;
+use Knuckles\Faktory\Problems\InvalidPassword;
+use Knuckles\Faktory\Problems\MissingRequiredPassword;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\Utils\Json;
 use Psr\Log\LoggerAwareInterface;
@@ -25,6 +27,7 @@ class TcpClient implements LoggerAwareInterface
         protected array $workerInfo = [],
         protected string $hostname = 'tcp://localhost',
         protected int $port = 7419,
+        protected string $password = '',
     ) {
         $this->responseParser = (new ProtocolFactory())->createResponseParser();
     }
@@ -73,17 +76,18 @@ class TcpClient implements LoggerAwareInterface
 
     protected function handshake()
     {
-        $this->readHi();
-        $this->sendHello();
+        $hiResponse = $this->readHi();
+        $this->sendHello($hiResponse);
         $this->readLine(operation: "Handshake");
     }
 
-    protected function readHi()
+    protected function readHi(): array
     {
         $hi = $this->readLine();
         if (empty($hi)) throw UnexpectedResponse::from("Handshake (HI)", $hi);
 
-        $version = Json::parse(str_replace("HI ", "", $hi))['v'];
+        $response = Json::parse(str_replace("HI ", "", $hi));
+        $version = $response['v'];
         if (floatval($version) > static::SUPPORTED_FAKTORY_PROTOCOL_VERSION) {
             $this->logger->warning(
                 sprintf(
@@ -92,12 +96,16 @@ class TcpClient implements LoggerAwareInterface
                 )
             );;
         }
+
+        return $response;
     }
 
-    protected function sendHello()
+    protected function sendHello(array $hiResponse)
     {
         $workerInfo = Json::stringify(array_merge(
-            $this->workerInfo, ["v" => static::SUPPORTED_FAKTORY_PROTOCOL_VERSION]
+            $this->workerInfo,
+            ["v" => static::SUPPORTED_FAKTORY_PROTOCOL_VERSION],
+            $this->passwordHash($hiResponse),
         ));
         $this->send("HELLO", $workerInfo);
     }
@@ -137,10 +145,36 @@ class TcpClient implements LoggerAwareInterface
         if (empty($messages)) return null;
 
         $response = $messages[0]?->getValueNative();
-        if (is_string($response) && str_starts_with($response, "ERR"))
-            throw UnexpectedResponse::from($operation, $response);
+        if (is_string($response) && str_starts_with($response, "ERR")) {
+            if ($response == "ERR Invalid password" ) {
+                throw InvalidPassword::forServer("$this->hostname:$this->port");
+            } else {
+                throw UnexpectedResponse::from($operation, $response);
+            }
+        }
 
         return $response;
+    }
+
+    protected function passwordHash(array $hiResponse): array
+    {
+        $requiresPassword = isset($hiResponse['s']) && isset($hiResponse['i']);
+        if (!$requiresPassword) {
+            return [];
+        }
+
+        if ($this->password == '') {
+            throw MissingRequiredPassword::forServer("$this->hostname:$this->port");
+        }
+
+        $nonce = $hiResponse['s'];
+        $iterations = $hiResponse['i'];
+        $data = $this->password . $nonce;
+        foreach (range(1, $iterations) as $ignored) {
+            $data = hash("sha256", $data, binary: true);
+        }
+        $data = bin2hex($data);
+        return ["pwdhash" => $data];
     }
 
     public function setLogger(LoggerInterface $logger): void

@@ -17,7 +17,13 @@ jobs:
       faktory:
         image: contribsys/faktory:latest
         ports:
-          - 7419:7419
+          - "7419:7419"
+      faktory_with_pwd:
+        image: contribsys/faktory:latest
+        ports:
+          - "7423:7419"
+        env:
+          FAKTORY_PASSWORD: my_special_password
 
     name: Tests (PHP ${{ matrix.php }})
 

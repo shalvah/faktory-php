@@ -1,6 +1,8 @@
 <?php
 
 use Knuckles\Faktory\Problems\CouldntConnect;
+use Knuckles\Faktory\Problems\InvalidPassword;
+use Knuckles\Faktory\Problems\MissingRequiredPassword;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\TcpClient;
 use Knuckles\Faktory\Utils\Json;
@@ -91,9 +93,28 @@ it('automatically connects if not connected before sending a command', function 
     expect($tcpClient->isConnected())->toBeTrue();
 });
 
-function tcpClient($port = 7419, $level = Level::Error) {
+// -- describe 'with a password protected Faktory server'
+it('raises an error if password is required but empty', function () {
+    $tcpClient = tcpClient(port: 7423);
+    expect(fn() => $tcpClient->connect())->toThrow(MissingRequiredPassword::class);
+});
+
+it('raises an error if the wrong password is supplied', function () {
+    $tcpClient = tcpClient(port: 7423, password: 'some_incorrect_password');
+    expect(fn() => $tcpClient->connect())->toThrow(InvalidPassword::class);
+});
+
+it('connects if the correct password is supplied', function () {
+    $tcpClient = tcpClient(port: 7423, password: 'my_special_password');
+    expect($tcpClient->connect())->toBeTrue()
+        ->and($tcpClient->isConnected())->toBeTrue();
+});
+// -- end
+
+function tcpClient($port = 7419, $level = Level::Error, $password = '') {
     return new TcpClient(
         logger: Knuckles\Faktory\Client::makeLogger(logLevel: $level),
         port: $port,
+        password: $password,
     );
 }
