@@ -18,14 +18,14 @@ class Client
     public function __construct(
         Level $logLevel = Level::Info,
         string $logDestination = 'php://stderr',
-        ?LoggerInterface $logger = null,
+        LoggerInterface $logger = null,
         string $hostname = 'tcp://localhost',
         int|string $port = 7419,
         string $password = '',
     )
     {
         $this->logger = $logger ?: self::makeLogger($logLevel, $logDestination);
-        $this->workerId = bin2hex(random_bytes(12));
+        $this->workerId = 'worker_'.bin2hex(random_bytes(12));
         $this->workerInfo = [
             "hostname" => gethostname(),
             "wid" => $this->workerId,
