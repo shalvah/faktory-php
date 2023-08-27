@@ -1,6 +1,6 @@
 <?php
 
-namespace Knuckles\Faktory;
+namespace Knuckles\Faktory\Connection;
 
 use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
@@ -39,6 +39,7 @@ class TcpClient implements LoggerAwareInterface
         $this->logger->info("Connecting to Faktory server on $this->hostname:$this->port");
         $this->createTcpConnection();
         $this->handshake();
+        $this->logger->info("Handshake complete");
 
         $this->state = State::Connected;
         return true;

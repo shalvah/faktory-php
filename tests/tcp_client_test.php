@@ -113,7 +113,7 @@ it('connects if the correct password is supplied', function () {
 
 function tcpClient($port = 7419, $level = Level::Error, $password = '') {
     return new TcpClient(
-        logger: Knuckles\Faktory\Client::makeLogger(logLevel: $level),
+        logger: \Knuckles\Faktory\Connection\Client::makeLogger(logLevel: $level),
         port: $port,
         password: $password,
     );

@@ -1,7 +1,9 @@
 <?php
 
-namespace Knuckles\Faktory;
+namespace Knuckles\Faktory\Connection;
 
+use Knuckles\Faktory\Bus\JobPayload;
+use Knuckles\Faktory\TcpClient;
 use Knuckles\Faktory\Utils\Json;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
@@ -50,11 +52,13 @@ class Client
     public function flush()
     {
         $this->tcpClient->sendAndRead("FLUSH");
+        return true;
     }
 
     public function push(array $job)
     {
         $this->tcpClient->sendAndRead("PUSH", Json::stringify($job));
+        return true;
     }
 
     public function pushBulk(array ...$jobs)
@@ -63,11 +67,27 @@ class Client
         return $this->tcpClient->readLine();
     }
 
-    public function fetch(string ...$queues): array|null
+    public function fetch(string ...$queues): ?JobPayload
     {
         $this->tcpClient->send("FETCH", ...$queues);
         // The first line of the response just contains the length of the next line; skip it
-        return $this->tcpClient->readLine(skipLines: 1);
+        $job = $this->tcpClient->readLine(skipLines: 1);
+        return $job ? JobPayload::make(...$job) : $job;
+    }
+
+    public function ack($jobId)
+    {
+        $this->tcpClient->sendAndRead("ACK", Json::stringify(["jid" => $jobId]));
+        return true;
+    }
+
+    public function fail($jobId, \Throwable $e)
+    {
+        $payload = JobPayload::failurePayload(
+            jid: $jobId, exception: $e,
+        );
+        $this->tcpClient->sendAndRead("FAIL", Json::stringify($payload));
+        return true;
     }
 
     public static function makeTcpClient(...$args): TcpClient
