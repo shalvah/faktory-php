@@ -36,7 +36,7 @@ abstract class Job
         Dispatcher::instance()->dispatch(static::class, $args, delaySeconds: $seconds);
     }
 
-    public static function dispatchMany(?int $inSeconds = null, array ...$args)
+    public static function dispatchMany(array $args, ?int $inSeconds = null)
     {
         Dispatcher::instance()->dispatchMany(static::class, $args, delaySeconds: $inSeconds);
     }

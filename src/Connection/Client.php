@@ -2,8 +2,6 @@
 
 namespace Knuckles\Faktory\Connection;
 
-use Knuckles\Faktory\Bus\JobPayload;
-use Knuckles\Faktory\TcpClient;
 use Knuckles\Faktory\Utils\Json;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
@@ -16,6 +14,7 @@ class Client
     protected LoggerInterface $logger;
     protected TcpClient $tcpClient;
     protected string $workerId;
+    protected array $config;
 
     public function __construct(
         Level $logLevel = Level::Info,
@@ -24,8 +23,10 @@ class Client
         string $hostname = 'tcp://localhost',
         int|string $port = 7419,
         string $password = '',
+        TcpClient $customTcpClient = null,
     )
     {
+        $this->config = get_defined_vars();
         $this->logger = $logger ?: self::makeLogger($logLevel, $logDestination);
         $this->workerId = 'worker_'.bin2hex(random_bytes(12));
         $this->workerInfo = [
@@ -34,7 +35,7 @@ class Client
             "pid" => getmypid(),
             "labels" => [],
         ];
-        $this->tcpClient = self::makeTcpClient(
+        $this->tcpClient = $customTcpClient ?: self::makeTcpClient(
             logger: $this->logger,
             workerInfo: $this->workerInfo,
             hostname: $hostname,
@@ -61,31 +62,28 @@ class Client
         return true;
     }
 
-    public function pushBulk(array ...$jobs)
+    public function pushBulk(array $jobs)
     {
         $this->tcpClient->sendAndRead("PUSHB", Json::stringify($jobs));
         return $this->tcpClient->readLine();
     }
 
-    public function fetch(string ...$queues): ?JobPayload
+    public function fetch(string ...$queues): ?array
     {
         $this->tcpClient->send("FETCH", ...$queues);
         // The first line of the response just contains the length of the next line; skip it
         $job = $this->tcpClient->readLine(skipLines: 1);
-        return $job ? JobPayload::make(...$job) : $job;
+        return $job;
     }
 
-    public function ack($jobId)
+    public function ack($payload)
     {
-        $this->tcpClient->sendAndRead("ACK", Json::stringify(["jid" => $jobId]));
+        $this->tcpClient->sendAndRead("ACK", Json::stringify($payload));
         return true;
     }
 
-    public function fail($jobId, \Throwable $e)
+    public function fail($payload)
     {
-        $payload = JobPayload::failurePayload(
-            jid: $jobId, exception: $e,
-        );
         $this->tcpClient->sendAndRead("FAIL", Json::stringify($payload));
         return true;
     }
@@ -103,5 +101,10 @@ class Client
             name: 'faktory-php',
             handlers: [new StreamHandler($logDestination, $logLevel)]
         );
+    }
+
+    public function getConfig(): array
+    {
+        return $this->config;
     }
 }
