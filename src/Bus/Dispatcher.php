@@ -8,14 +8,14 @@ use Psr\Log\LoggerInterface;
 
 class Dispatcher
 {
-    protected static self $defaultInstance;
     protected Client $client;
 
     public function __construct(
-        protected array $clientConfig = []
+        protected array $clientConfig = [],
+        Client $customClient = null
     )
     {
-        $this->client = new Client(...$this->clientConfig);
+        $this->client = $customClient ?: new Client(...$this->clientConfig);
     }
 
     public function dispatch(string $jobClass, array $args = [], int $delaySeconds = null)
@@ -26,7 +26,7 @@ class Dispatcher
 
     public function dispatchMany(string $jobClass, array $argumentsListing, int $delaySeconds = null)
     {
-        $basicPayload = static::toJobPayload($jobClass, [], $delaySeconds);
+        $basicPayload = static::toJobPayload($jobClass, args: [], delaySeconds: $delaySeconds);
 
         $jobPayloads = [];
         foreach ($argumentsListing as $index => $arguments) {
@@ -49,6 +49,23 @@ class Dispatcher
     )
     {
         return new static(clientConfig: get_defined_vars());
+    }
+
+    /**
+     * For convenience, we provide a global instance, accessible via the `instance()` method
+     */
+    protected static self $defaultInstance;
+
+    /**
+     * Retrieve the global Dispatcher.
+     */
+    public static function instance(): static
+    {
+        if (isset(static::$defaultInstance)) {
+            return static::$defaultInstance;
+        }
+
+        return (static::$defaultInstance = new static);
     }
 
     /**
@@ -77,21 +94,9 @@ class Dispatcher
         static::$defaultInstance = new static(clientConfig: $config);
     }
 
-    /**
-     * Retrieve the global Dispatcher.
-     */
-    public static function instance()
-    {
-        if (isset(static::$defaultInstance)) {
-            return static::$defaultInstance;
-        }
-
-        return (static::$defaultInstance = new static);
-    }
-
     protected static function toJobPayload(string $jobClass, array $args, int $delaySeconds = null)
     {
-        return JobPayload::build(
+        return PayloadBuilder::build(
             jobType: $jobClass,
             args: $args,
             queue: $jobClass::$queue,
@@ -99,5 +104,10 @@ class Dispatcher
             reserveFor: $jobClass::$reserveFor,
             delaySeconds: $delaySeconds
         );
+    }
+
+    public function getClient(): Client
+    {
+        return $this->client;
     }
 }

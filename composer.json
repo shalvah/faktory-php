@@ -8,7 +8,7 @@
     "require-dev": {
         "pestphp/pest": "^2.0",
         "spatie/ray": "^1.36",
-        "mockery/mockery": "^1.5"
+        "mockery/mockery": "^1.6"
     },
     "scripts": {
         "test": "pest --colors=always",
@@ -16,7 +16,8 @@
     },
     "autoload": {
         "psr-4": {
-            "Knuckles\\Faktory\\": "src"
+            "Knuckles\\Faktory\\": "src",
+            "Knuckles\\Faktory\\Tests\\": "tests"
         }
     },
     "config": {

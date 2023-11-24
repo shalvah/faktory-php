@@ -2,14 +2,17 @@
 
 namespace Knuckles\Faktory\Bus;
 
-class JobPayload
+class PayloadBuilder
 {
+    /**
+     * Generate the payload array sent to Faktory to enqueue a job.
+     */
     public static function build(
         string $jobType,
         array $args,
         ?string $queue,
-        ?string $retry,
-        ?string $reserveFor,
+        ?int $retry,
+        ?int $reserveFor,
         ?int $delaySeconds,
     ): array
     {
@@ -22,7 +25,7 @@ class JobPayload
         if ($queue) {
             $payload['queue'] = $queue;
         }
-        if ($retry) {
+        if (is_null($retry)) { // 0 is a possible value, meaning no retries
             $payload['retry'] = $retry;
         }
         if ($reserveFor) {
@@ -35,23 +38,5 @@ class JobPayload
         }
 
         return $payload;
-    }
-
-    public static function failurePayload(
-        string $jid,
-        \Throwable $exception,
-    ): array
-    {
-        return [
-            "jid" => $jid,
-            "errtype" => $exception::class,
-            "message" => $exception->getMessage(),
-            "backtrace" => explode("\n", $exception->getTraceAsString()),
-        ];
-    }
-
-    public function toArray()
-    {
-
     }
 }
