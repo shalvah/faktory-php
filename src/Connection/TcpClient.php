@@ -188,10 +188,3 @@ class TcpClient implements LoggerAwareInterface
         return $this->state == State::Connected;
     }
 }
-
-enum State
-{
-    case Connecting;
-    case Connected;
-    case Disconnected;
-}
