@@ -6,13 +6,16 @@ use Knuckles\Faktory\Problems\MissingRequiredPassword;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\Connection\TcpClient;
 use Knuckles\Faktory\Utils\Json;
+use Knuckles\Faktory\Utils\Logging;
 use Monolog\Level;
 use Monolog\Logger;
 
-describe('connection', function () {
+describe('connecting to the server', function () {
     it('raises an error if Faktory server is unreachable', function () {
         $previous = set_error_handler(fn () => null, E_WARNING); // Disable PHPUnit's default
-        expect(fn() => tcpClient(port: 7400)->connect())->toThrow(CouldntConnect::class);
+        $tcpClient = tcpClient(port: 7400);
+        expect(fn() => $tcpClient->connect())->toThrow(CouldntConnect::class);
+        expect($tcpClient->isConnected())->toEqual(false);
         set_error_handler($previous);
     });
 
@@ -143,7 +146,7 @@ it('connects if the correct password is supplied', function () {
 
 function tcpClient($port = 7419, $level = Level::Error, $password = '') {
     return new TcpClient(
-        logger: \Knuckles\Faktory\Connection\Client::makeLogger(logLevel: $level),
+        logger: Logging::makeLogger(logLevel: $level),
         port: $port,
         password: $password,
     );

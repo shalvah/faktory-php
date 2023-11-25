@@ -5,12 +5,14 @@ namespace Knuckles\Faktory\Connection;
 use Clue\Redis\Protocol\Factory as ProtocolFactory;
 use Clue\Redis\Protocol\Parser\ParserInterface;
 use Knuckles\Faktory\Problems\CouldntConnect;
+use Knuckles\Faktory\Problems\CouldntWrite;
 use Knuckles\Faktory\Problems\InvalidPassword;
 use Knuckles\Faktory\Problems\MissingRequiredPassword;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
 use Knuckles\Faktory\Utils\Json;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
+use Throwable;
 
 class TcpClient implements LoggerAwareInterface
 {
@@ -62,12 +64,13 @@ class TcpClient implements LoggerAwareInterface
         $filePointer = false;
         try {
             $filePointer = fsockopen($this->hostname, $this->port, $errorCode, $errorMessage, timeout: 3);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $errorMessage = $e->getMessage();
             $errorCode = $e->getCode();
         }
 
         if ($filePointer === false) {
+            $this->state = State::Disconnected;
             throw CouldntConnect::to("{$this->hostname}:{$this->port}", $errorMessage, $errorCode);
         }
 
@@ -123,9 +126,23 @@ class TcpClient implements LoggerAwareInterface
             $this->connect();
         }
 
-        $message = $command . " " . join(' ', $args) . "\r\n";
+        $argsString = $args ? (" " . join(' ', $args)) : "";
+        $message = sprintf("%s%s\r\n", $command, $argsString);
         $this->logger->debug("Sending: " . $message);
-        fwrite($this->connection, $message);
+
+        // Error handling in PHP: you must use try/catch
+        // AND check return values to cover possible values of error_reporting
+        try {
+            $bytesWritten = fwrite($this->connection, $message);
+
+            if ($bytesWritten === false) {
+                $this->state = State::Disconnected;
+                throw CouldntWrite::to("{$this->hostname}:{$this->port}");
+            }
+        } catch (Throwable $e) {
+            $this->state = State::Disconnected;
+            throw CouldntWrite::to("{$this->hostname}:{$this->port}", $e);
+        }
     }
 
     public function readLine(?int $skipLines = 0, $operation = "Operation"): mixed
