@@ -4,24 +4,56 @@ use Knuckles\Faktory\Problems\CouldntConnect;
 use Knuckles\Faktory\Problems\InvalidPassword;
 use Knuckles\Faktory\Problems\MissingRequiredPassword;
 use Knuckles\Faktory\Problems\UnexpectedResponse;
-use Knuckles\Faktory\TcpClient;
+use Knuckles\Faktory\Connection\TcpClient;
 use Knuckles\Faktory\Utils\Json;
+use Knuckles\Faktory\Utils\Logging;
 use Monolog\Level;
 use Monolog\Logger;
 
-it('raises an error if Faktory server is unreachable', function () {
-    $previous = set_error_handler(fn () => null, E_WARNING); // Disable PHPUnit's default
-    expect(fn() => tcpClient(port: 7400)->connect())->toThrow(CouldntConnect::class);
-    set_error_handler($previous);
+describe('connecting to the server', function () {
+    it('raises an error if Faktory server is unreachable', function () {
+        $previous = set_error_handler(fn () => null, E_WARNING); // Disable PHPUnit's default
+        $tcpClient = tcpClient(port: 7400);
+        expect(fn() => $tcpClient->connect())->toThrow(CouldntConnect::class);
+        expect($tcpClient->isConnected())->toEqual(false);
+        set_error_handler($previous);
+    });
+
+    it('connects to and disconnects from the Faktory server', function () {
+        $tcpClient = tcpClient();
+        expect($tcpClient->connect())->toBeTrue()
+            ->and($tcpClient->isConnected())->toBeTrue();
+
+        $tcpClient->disconnect();
+        expect($tcpClient->isConnected())->toBeFalse();
+    });
+
+    it('automatically connects if not connected before sending a command', function () {
+        $tcpClient = tcpClient();
+        expect($tcpClient->isConnected())->toBeFalse();
+        $tcpClient->send("PUSH", JSON::stringify([
+            "jid" => "abc", "jobtype" => "SomeJobClass",
+        ]));
+        expect($tcpClient->isConnected())->toBeTrue();
+    });
 });
 
-it('connects to and disconnects from the Faktory server', function () {
-    $tcpClient = tcpClient();
-    expect($tcpClient->connect())->toBeTrue()
-        ->and($tcpClient->isConnected())->toBeTrue();
+describe('with a password protected Faktory server', function () {
+    it('raises an error if password is not provided', function () {
+        $tcpClient = tcpClient(port: 7423);
+        expect(fn() => $tcpClient->connect())->toThrow(MissingRequiredPassword::class);
+    });
 
-    $tcpClient->disconnect();
-    expect($tcpClient->isConnected())->toBeFalse();
+    it('raises an error if the wrong password is supplied', function () {
+        $tcpClient = tcpClient(port: 7423, password: 'some_incorrect_password');
+        expect(fn() => $tcpClient->connect())->toThrow(InvalidPassword::class);
+    });
+
+    it('connects if the correct password is supplied', function () {
+        $tcpClient = tcpClient(port: 7423, password: 'my_special_password');
+        expect($tcpClient->connect())->toBeTrue()
+            ->and($tcpClient->isConnected())->toBeTrue();
+    });
 });
 
 it('can send commands to and read from the Faktory server', function () {
@@ -34,6 +66,7 @@ it('can send commands to and read from the Faktory server', function () {
         "jid" => "123861239abnadsa",
         "jobtype" => "SomeJobClass",
         "args" => [1, 2, true, "hello"],
+        "retry" => 10, // todo is state leaking from other tests? if I don't set this, Faktory sets it to 2, not 25
     ];
     $tcpClient->send("PUSH", Json::stringify($job));
     expect($tcpClient->readLine())->toStartWith("OK");
@@ -46,7 +79,7 @@ it('can send commands to and read from the Faktory server', function () {
     expect($fetched['enqueued_at'])->not->toBeEmpty();
     unset($fetched['enqueued_at']);
 
-    expect($fetched)->toEqual(array_merge($job, ['queue' => 'default', 'retry' => 25]));
+    expect($fetched)->toEqual(array_merge($job, ['queue' => 'default', 'retry' => 10]));
 });
 
 it('logs a warning when version is higher than expected', function () {
@@ -113,7 +146,7 @@ it('connects if the correct password is supplied', function () {
 
 function tcpClient($port = 7419, $level = Level::Error, $password = '') {
     return new TcpClient(
-        logger: Knuckles\Faktory\Client::makeLogger(logLevel: $level),
+        logger: Logging::makeLogger(logLevel: $level),
         port: $port,
         password: $password,
     );
