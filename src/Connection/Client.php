@@ -3,9 +3,8 @@
 namespace Knuckles\Faktory\Connection;
 
 use Knuckles\Faktory\Utils\Json;
-use Monolog\Handler\StreamHandler;
+use Knuckles\Faktory\Utils\Logging;
 use Monolog\Level;
-use Monolog\Logger;
 use Psr\Log\LoggerInterface;
 
 class Client
@@ -27,7 +26,8 @@ class Client
     )
     {
         $this->config = get_defined_vars();
-        $this->logger = $logger ?: self::makeLogger($logLevel, $logDestination);
+        $this->logger = $logger ?: Logging::makeLogger($logLevel, $logDestination);
+        // TODO this should not change for every client!
         $this->workerId = 'worker_'.bin2hex(random_bytes(12));
         $this->workerInfo = [
             "hostname" => gethostname(),
@@ -93,14 +93,9 @@ class Client
         return new TcpClient(...$args);
     }
 
-    public static function makeLogger(
-        Level $logLevel = Level::Info, string $logDestination = 'php://stderr')
-    : LoggerInterface
+    public function connect()
     {
-        return new Logger(
-            name: 'faktory-php',
-            handlers: [new StreamHandler($logDestination, $logLevel)]
-        );
+        return $this->tcpClient->connect();
     }
 
     public function getConfig(): array
