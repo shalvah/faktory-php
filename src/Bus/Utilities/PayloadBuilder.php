@@ -1,6 +1,6 @@
 <?php
 
-namespace Knuckles\Faktory\Bus;
+namespace Knuckles\Faktory\Bus\Utilities;
 
 class PayloadBuilder
 {
@@ -10,10 +10,10 @@ class PayloadBuilder
     public static function build(
         string $jobType,
         array $args,
-        ?string $queue,
-        ?int $retry,
-        ?int $reserveFor,
-        ?int $delaySeconds,
+        ?string $queue = null,
+        ?int $retry = null,
+        ?int $reserveFor = null,
+        ?int $delaySeconds = null,
     ): array
     {
         $payload = [
@@ -38,5 +38,26 @@ class PayloadBuilder
         }
 
         return $payload;
+    }
+
+    /**
+     * Generate the payload array sent to Faktory to report a job's failure.
+     */
+    public static function successPayload(array $originalJobPayload): array
+    {
+        return ["jid" => $originalJobPayload["jid"]];
+    }
+
+    /**
+     * Generate the payload array sent to Faktory to report a job's failure.
+     */
+    public static function failurePayload(array $originalJobPayload, \Throwable $exception,): array
+    {
+        return [
+            "jid" => $originalJobPayload["jid"],
+            "errtype" => $exception::class,
+            "message" => $exception->getMessage(),
+            "backtrace" => explode("\n", $exception->getTraceAsString()),
+        ];
     }
 }

@@ -16,15 +16,14 @@ test('::make() configures and returns a local instance', function () {
 });
 
 test('Dispatcher::configure() configures the global instance', function () {
-    Dispatcher::configure(
-        hostname: 'skalitz'
-    );
+    Dispatcher::configure(hostname: 'skalitz');
     expect(
         Dispatcher::instance()->getClient()->getConfig()["hostname"]
     )->toEqual('skalitz');
 });
 
 test('Dispatcher::instance() returns the same instance', function () {
+    expect(Dispatcher::instance())->toBeInstanceOf(Dispatcher::class);
     expect(Dispatcher::instance())->toEqual(Dispatcher::instance());
 });
 
@@ -40,7 +39,7 @@ test('dispatch() sends a PUSH to the Faktory server', function () {
         expect($actualPayload)->toHaveKeys(['jid']);
         return true;
     });
-    $dispatcher = new Dispatcher(customClient: $mockClient);
+    $dispatcher = Dispatcher::make(customClient: $mockClient);
     $dispatcher->dispatch(TestJob::class, $args);
 });
 
@@ -62,6 +61,6 @@ test('dispatchMany() sends a PUSHB to the Faktory server', function () {
         expect($actualPayload[1])->toHaveKeys(['jid']);
         return true;
     });
-    $dispatcher = new Dispatcher(customClient: $mockClient);
+    $dispatcher = Dispatcher::make(customClient: $mockClient);
     $dispatcher->dispatchMany(TestJob::class, $argsList);
 });

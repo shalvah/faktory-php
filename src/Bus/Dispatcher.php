@@ -2,26 +2,16 @@
 
 namespace Knuckles\Faktory\Bus;
 
-use Knuckles\Faktory\Connection\Client;
-use Monolog\Level;
-use Psr\Log\LoggerInterface;
+use Knuckles\Faktory\Bus\Foundations\ClientConnectorWithGlobalInstance;
+use Knuckles\Faktory\Bus\Foundations\DispatcherInterface;
+use Knuckles\Faktory\Bus\Utilities\PayloadBuilder;
 
-class Dispatcher
+class Dispatcher extends ClientConnectorWithGlobalInstance implements DispatcherInterface
 {
-    protected Client $client;
-
-    public function __construct(
-        protected array $clientConfig = [],
-        Client $customClient = null
-    )
-    {
-        $this->client = $customClient ?: new Client(...$this->clientConfig);
-    }
-
     public function dispatch(string $jobClass, array $args = [], int $delaySeconds = null)
     {
         $jobPayload = static::toJobPayload($jobClass, $args, $delaySeconds);
-        $this->client->push($jobPayload);
+        return $this->client->push($jobPayload);
     }
 
     public function dispatchMany(string $jobClass, array $argumentsListing, int $delaySeconds = null)
@@ -39,61 +29,6 @@ class Dispatcher
         return $this->client->pushBulk($jobPayloads);
     }
 
-    public static function make(
-        Level $logLevel = Level::Info,
-        string $logDestination = 'php://stderr',
-        LoggerInterface $logger = null,
-        string $hostname = 'tcp://localhost',
-        int|string $port = 7419,
-        string $password = '',
-    )
-    {
-        return new static(clientConfig: get_defined_vars());
-    }
-
-    /**
-     * For convenience, we provide a global instance, accessible via the `instance()` method
-     */
-    protected static self $defaultInstance;
-
-    /**
-     * Retrieve the global Dispatcher.
-     */
-    public static function instance(): static
-    {
-        if (isset(static::$defaultInstance)) {
-            return static::$defaultInstance;
-        }
-
-        return (static::$defaultInstance = new static);
-    }
-
-    /**
-     * Configure the global Dispatcher.
-     *
-     * Usage:
-     *
-     *     Dispatcher::configure(
-     *       logLevel: \Monolog\Level::Info,
-     *       logDestination: 'php://stderr',
-     *       hostname: 'tcp://localhost',
-     *       port: 7419,
-     *       password: ENV['thing'],
-     *     );
-     */
-    public static function configure(
-        Level $logLevel = Level::Info,
-        string $logDestination = 'php://stderr',
-        LoggerInterface $logger = null,
-        string $hostname = 'tcp://localhost',
-        int|string $port = 7419,
-        string $password = '',
-    )
-    {
-        $config = get_defined_vars();
-        static::$defaultInstance = new static(clientConfig: $config);
-    }
-
     protected static function toJobPayload(string $jobClass, array $args, int $delaySeconds = null)
     {
         return PayloadBuilder::build(
@@ -104,10 +39,5 @@ class Dispatcher
             reserveFor: $jobClass::$reserveFor,
             delaySeconds: $delaySeconds
         );
-    }
-
-    public function getClient(): Client
-    {
-        return $this->client;
     }
 }
